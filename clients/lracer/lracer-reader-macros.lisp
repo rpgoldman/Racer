@@ -60,7 +60,9 @@
   #+:lispworks
   (lispworks:whitespace-char-p char)
   #+:allegro
-  (stream::whitespace-char-p char)
+  ((lambda (x)
+	     (or (char= #\space x)
+		 (not (graphic-char-p x)))) char)
   #+:sbcl
   ;; (find char SB-FORMAT::*FORMAT-WHITESPACE-CHARS*)
   (sb-unicode:whitespace-p char)
