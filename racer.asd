@@ -228,7 +228,7 @@
                (:file "lw-inspector")
                (:file "num-restr")
                (:file "simplex-support")
-               #+(or :lispworks :ccl)
+               #+(or :lispworks :ccl :sbcl)
                (:module "aserve"
                         :pathname #P"racer:source;"
                         :components ((:file "aserve-config")))
@@ -312,11 +312,12 @@
                (:file "storage-management")
                ;; #+:racer-with-sirius
                ;; sirius
-               #+(or :ccl :lispworks :allegro)
+               #+(or :ccl :lispworks :allegro sbcl)
                (:file "racer-server")
-	       #+(or :abcl :sbcl)
+	       #+(or :abcl ;; :sbcl
+                     )
 	       (:file "ersatz-racer-server")
-               #+(or :ccl :lispworks :allegro)
+               #+(or :ccl :lispworks :allegro sbcl)
                (:file "nrql-server-case")
                (:file "racer-interface")
                (:file "xml-interface")

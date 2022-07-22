@@ -272,7 +272,7 @@
 
 ;;; ======================================================================
 
-#+:lispworks
+#+lispworks
 (defun make-stream-and-talk (handle verbose unsafe-mode trace-output)
   (let ((stream (make-instance 'comm:socket-stream
                                :socket handle
@@ -309,6 +309,44 @@
   (if *multiprocessing-server-control*
       (setf *server-control-process* 
 	(mp:process-run-function (format nil "~A ServerControl @ ~A" (get-product-name) (1+ port))
+	  'talk-on-stream 
+	  stream
+	  verbose unsafe-mode trace-output t))
+  (talk-on-stream stream verbose unsafe-mode trace-output t)))
+
+#+:allegro
+(defun make-stream-and-talk (stream verbose unsafe-mode trace-output)
+  (if *multiprocessing-server*
+      ;; this process may be terminated by abort... in this case 
+      ;; we need to write ":abort" to the stream... 
+      (handler-case 
+	  (mp:process-run-function (format nil "~A Server ~A" (get-product-name) stream)
+	    'talk-on-stream
+	    stream
+	    verbose unsafe-mode trace-output)
+	(error (error)
+	  (format t "Process run function: ~A" error))) 
+    (talk-on-stream stream verbose unsafe-mode trace-output)))
+
+#+sbcl
+(defun make-stream-and-talk (stream verbose unsafe-mode trace-output)
+  (if *multiprocessing-server*
+      ;; this process may be terminated by abort... in this case 
+      ;; we need to write ":abort" to the stream... 
+      (handler-case 
+	  (acl-mp:process-run-function (format nil "~A Server ~A" (get-product-name) stream)
+	    'talk-on-stream
+	    stream
+	    verbose unsafe-mode trace-output)
+	(error (error)
+	  (format t "Process run function: ~A" error))) 
+    (talk-on-stream stream verbose unsafe-mode trace-output)))
+
+#+sbcl
+(defun make-stream-and-talk-server-control (stream port verbose unsafe-mode trace-output)
+  (if *multiprocessing-server-control*
+      (setf *server-control-process* 
+	(acl-mp:process-run-function (format nil "~A ServerControl @ ~A" (get-product-name) (1+ port))
 	  'talk-on-stream 
 	  stream
 	  verbose unsafe-mode trace-output t))
@@ -836,7 +874,7 @@
                                      ore-task
                                      ore-result-file
 				     &optional (process-init-file nil))
-  #+(or :ccl :allegro) (declare (ignore process-init-file))
+  #-lispworks (declare (ignore process-init-file))
   (handler-case
       (with-debug-handler
 	  (let ((package *racer-user-package*)
@@ -982,10 +1020,10 @@
     (condition (c)
       (format *error-output* "~A~%~%" c))))
 
-#+(or :lispworks :allegro :ccl)
+#+(or :lispworks :allegro :ccl sbcl)
 (defun wait-for-racer (racer-process)
   #+:lispworks (not (mp:process-alive-p racer-process))
-  #+:allegro (not (mp:process-alive-p racer-process))
+  #+ (or allegro sbcl) (not (#+allegro mp:process-alive-p #+sbcl acl-mp:process-active-p racer-process))
   #+:ccl (ccl:process-kill-issued racer-process))
 
 #+:lispworks 
@@ -993,7 +1031,8 @@
   `(lambda (handle)
      (,function handle)))
 
-#+:allegro
+;;; Assuming that SBCL + portable allegroserve will behave like allegro here.
+#+ (or allegro sbcl)
 (defmacro connection-monitor ((stream) form)
   (declare (ignore stream))
   `(progn 
@@ -1068,14 +1107,16 @@
     "-update"
     "-update-from"))
 
-#+(or :lispworks :allegro :ccl)
+#+(or :lispworks :allegro :ccl sbcl)
 (defun racer-toplevel (&optional (command-line nil))
   
   (when *master-listener* 
     #+(or :lispworks :allegro) (mp::process-kill *master-listener*)
+    #+sbcl (acl-mp:process-kill *master-listener*)
     #+:ccl (ccl:process-kill *master-listener*))
   
   (when *server-control-process*
+    #+sbcl (acl-mp:process-kill *server-control-process*)
     #+(or :lispworks :allegro) (mp::process-kill *server-control-process*)
     #+:ccl (ccl:process-kill *server-control-process*))
   
@@ -1338,12 +1379,9 @@
 		      *default-racer-port*
 		      *default-racer-http-port*
 		      #+:lispworks (format nil "default=~D" *stack-size*)
-                      #+:allegro "ignored in this version"
-                      #+:ccl "ignored in this version")
+                      #-lispworks "ignored in this version")
 	      (print-info)
-	      #+:lispworks (lispworks:quit)
-	      #+:allegro (exit)
-              #+:ccl (ccl:quit))
+              (uiop:quit))
 
             (when ore-task
               (setf ore-task (read-from-string (second ore-task)))
@@ -1353,12 +1391,11 @@
             (when ore-result-file
               (setf ore-result-file (second ore-result-file)))
 	    #+:lispworks
+          (progn
 	    (when stack-size
 	      (setf *stack-size* (read-from-string (second stack-size))))
-	    #+:lispworks
 	    (check-type *stack-size* integer)
-	    #+:lispworks 
-	    (setf system:*sg-default-size* *stack-size*)
+	    (setf system:*sg-default-size* *stack-size*))
 	    (when (and (or port http-port) (or in-file xml-file rdfs-file owl-file owllink-file 
 					       dig-file queries-file))
 	      (error "Either -p/-http or -f/-xml/-rdfs/-owl/-owllink/-dig and/or -q may be supplied."))
@@ -1428,6 +1465,7 @@
 		     (system:*sg-default-size* *stack-size*)
 		     (racer-process (#+(or :lispworks :allegro)
                                      mp:process-run-function
+                                     #+sbcl acl-mp:process-run-function
                                      #+:ccl ccl:process-run-function
                                      "RACER"
                                      #+:lispworks '()
@@ -1442,8 +1480,10 @@
                                      ore-task
                                      ore-result-file
                                      t)))
-		#+(or :lispworks :allegro)
-                (mp:process-wait "WAITING FOR RACER TO FINISH"
+		#+(or :lispworks :allegro sbcl)
+                (#+(or :lispworks :allegro) mp:process-wait
+                   #+sbcl acl-mp:process-wait
+                   "WAITING FOR RACER TO FINISH"
                   'wait-for-racer
                   racer-process)
                 #+:ccl
@@ -1573,6 +1613,8 @@
 			 #+:lispworks (system:*sg-default-size* *stack-size*)
 			 (racer-process (#+(or :lispworks :allegro)
                                          mp:process-run-function 
+                                         #+sbcl 
+                                         acl-mp:process-run-function
                                          #+:ccl
                                          ccl:process-run-function
                                          "RACER"
@@ -1589,22 +1631,31 @@
                                          ore-result-file)))
 		    (if timeout
 			(progn
-			  (#+(or :lispworks :allegro) 
-                             mp:process-wait-with-timeout
+                          #+(or :lispworks :allegro ccl) 
+			  (mp:process-wait-with-timeout
+                             #+sbcl acl-mp:process-wait-with-timeout
                              #+:ccl ccl:process-wait-with-timeout
                              "WAITING FOR RACER TO FINISH"
                              (read-from-string (second timeout))
                              'wait-for-racer
                              racer-process)
+                          #+sbcl
+                          (acl-mp:process-wait-with-timeout
+                           "WAITING FOR RACER TO FINISH"
+                           (read-from-string (second timeout))
+                           #'(lambda () (wait-for-racer racer-process)))
 			  (when #+:lispworks (mp:process-alive-p racer-process)
 				#+:allegro (mp:process-active-p racer-process)
+				#+sbcl (acl-mp:process-active-p racer-process)
                             #+:ccl (not (ccl:process-kill-issued racer-process))
 				(#+(or :lispworks :allegro) mp:process-kill
+                                   #+sbcl acl-mp:process-kill
                                    #+:ccl ccl:process-kill racer-process)
 				(format (or out-filename t)
 					"~%TIMEOUT after ~D secs~%" (read-from-string (second timeout)))))
 		      (#+(or :lispworks :allegro) mp:process-wait 
                          #+:ccl ccl:process-wait
+                         #+sbcl acl-mp:process-wait
                          "WAITING FOR RACER TO FINISH"
 				       'wait-for-racer
 				       racer-process))))
@@ -1623,7 +1674,7 @@
                        (lispworks:quit))
                    (sleep 10)))
 		
-		#+:allegro
+		#+ (or allegro sbcl)
 		(let ((socket nil)
 		      (server-control-socket nil)
 		      
@@ -1632,7 +1683,8 @@
 		  (loop until socket do
 			(handler-case
 			    (setf socket 
-			      (socket:make-socket 
+			      (#+allegro socket:make-socket 
+                               #+sbcl acl-compat.socket:make-socket
 			       :connect :passive 
 			       :local-port port :reuse-address t))
 			  (error (c)
@@ -1675,7 +1727,7 @@
 			       `(unwind-protect
 				    (loop
 				      (let ((stream (socket:accept-connection ,socket)))
-					#+:allegro 
+					#+ (or sbcl allegro) 
 					(if *external-format*
 					    (setf (stream-external-format stream) *external-format*)
 					  (let ((*tcp-console-logging* t))
@@ -1692,11 +1744,15 @@
 				    (close ,socket)))))
 		    
 		    (setf *server-control-process* 
-		      (mp:process-run-function (format nil "~A ServerControl @ ~A" (get-product-name) (1+ port))
+		      (#+allegro mp:process-run-function
+                       #+sbcl acl-mp:process-run-function
+                       (format nil "~A ServerControl @ ~A" (get-product-name) (1+ port))
 			#'(lambda ()
 			    (server-loop server-control-socket t))))
-		    
-		    (setf (mp:process-priority *server-control-process*) 100)
+		    #+allegro ;; acl-compat.mp does not implement process priority
+		    (setf ( mp:process-priority
+                           *server-control-process*)
+                          100)
 
 		    (server-loop socket)))
 
@@ -2922,9 +2978,7 @@
 		       (if (third expr)
 			   (if *unsafe-mode*
 			       (third expr)
-			     (error "Cannot save files. ~
-                                                      Please start ~A with the option -u for unsafe mode ~
-                                                      (do not forget -- under Windows)." 
+			     (error "Cannot save files. Please start ~A with the option -u for unsafe mode (do not forget -- under Windows)." 
 				    (get-product-name)))))
 	     output-string-stream))
     (otherwise
@@ -4088,9 +4142,11 @@
                 output-string-stream))))
 
 
-#+:allegro
+#+(or allegro sbcl)
 (defun send-to-subscriber (message ip port count)
-  (let ((stream (socket:make-socket :remote-host ip :remote-port port)))
+  (let ((stream (#+allegro socket:make-socket
+                 #+sbcl acl.compat.socket:make-socket
+                 :remote-host ip :remote-port port)))
     (with-output-to-string (output-string-stream)
       (answer-1 'test nil
                 stream count
