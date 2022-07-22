@@ -69,12 +69,12 @@
 ;; with resources being freed and process pools being managed correctly.
 
 #+(and (not :ensure-nrql-debugging)
-       (or :lispworks4 :lispworks5 :lispworks6 :allegro :ccl) 
-       (not :allegro-v9.0)) 
+       (or :lispworks4 :lispworks5 :lispworks6 :allegro :ccl sbcl) 
+       (not (and allegro (not (version>= 10)))))
 (pushnew :multiprocess-queries *features*)
 
 #+(and (not :ensure-nrql-debugging)
-       (or :lispworks4 :lispworks5 :lispworks6 :allegro :ccl)
+       (or :lispworks4 :lispworks5 :lispworks6 :allegro :ccl sbcl)
        (not :dlmaps)
        (not :lispworks6.1))
 (pushnew :process-pooling *features*)
@@ -85,7 +85,7 @@
 (when (eq (readtable-case *readtable*) :preserve)
   (pushnew :mlisp *features*))
 
-#+:allegro
+#+(or allegro sbcl)                     ; Allegro uses AllegroServe; SBCL uses Portable AllegroServe
 (pushnew ':aserve *features*)
 
 #+(and :lispworks (not :application-generation))
@@ -122,9 +122,10 @@
   :homepage "http://www.racer-systems.com"
   :pathname #P"racer:source;"
   :serial t
-  :depends-on (#-:abcl (:require "aserve") 
-               #-:allegro (:require "flexi-streams")
-               #-:allegro (:require "deflate")
+  :depends-on (#+allegro (:require "aserve")
+               #+(and (not allegro) (not abcl)) "zaserve"
+               #-:allegro "flexi-streams"
+               #-:allegro "deflate"
                #+:allegro (:require "uri")
                #+:allegro (:require "inflate")
                #+:allegro (:require "streama"))
@@ -314,8 +315,7 @@
                ;; sirius
                #+(or :ccl :lispworks :allegro sbcl)
                (:file "racer-server")
-	       #+(or :abcl ;; :sbcl
-                     )
+	       #+abcl
 	       (:file "ersatz-racer-server")
                #+(or :ccl :lispworks :allegro sbcl)
                (:file "nrql-server-case")
