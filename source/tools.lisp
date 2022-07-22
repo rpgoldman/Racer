@@ -474,9 +474,9 @@
 (defun whitespace-char-p (char)
   #+:lispworks
   (lispworks:whitespace-char-p char)
-  #+(and :allegro (not (or :allegro-v9.0 :allegro-v10.0)))
+  #+(and :allegro (not (version>= 9)))
   (stream::whitespace-char-p char)
-  #+(and :allegro (or :allegro-v9.0 :allegro-v10.0))
+  #+(and :allegro (version>= 9))
   (excl::whitespace-char-p char)
   #+:sbcl
   ;;(find char SB-FORMAT::*FORMAT-WHITESPACE-CHARS*)
