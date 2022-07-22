@@ -277,6 +277,18 @@
        (mp:yield))
      ,@body))
 
+;;; this is actually for the case where we are used portable Allegro Serve
+;;; as modified by Zach (ZACL and ZASERVE), in which case the functions are
+;;; coming from Bordeaux threads. For Bordeaux threads there's no visible
+;;; locker, but if you are not the locker, it's an error to try to release
+;;; the lock.
+#+ (and multiprocess-queries sbcl)
+(defmacro release-queue-lock-if-already-mine ((query) &body body)
+  `(with-slots (queue-lock) ,query
+     (ignore-errors (bordeaux-threads:release-lock queue-lock))
+     (bordeaux-threads:thread-yield)
+     ,@body))
+
 #+(and :multiprocess-queries :allegro)
 (defmacro release-queue-lock-if-already-mine ((query) &body body)
   `(with-slots (queue-lock) ,query 
@@ -300,7 +312,7 @@
         ))
      ,@body))
 
-#+(and :multiprocess-queries (not (or :lispworks :allegro :ccl)))
+#+(and :multiprocess-queries (not (or :lispworks :allegro :ccl sbcl)))
 (defmacro release-queue-lock-if-already-mine ((query) &body body)
   (break "Please implement release-queue-lock-if-already-mine for this platform. Thanks."))
 

@@ -80,7 +80,7 @@
        ,@body))
 
 
-  #+:allegro
+  #+ (or allegro sbcl)
   (defun make-lock ()
     (mp:make-process-lock))
 
@@ -109,7 +109,7 @@
 #+:multiprocess-queries
 (progn 
 
-  #+(or :abcl :sbcl)
+  #+abcl
   (defmacro start-process (&body body)  
     `(if *multiprocess-queries*
          (to-be-implemented 'start-process)
@@ -134,11 +134,10 @@
                       ,@body))
          nil)))
 
-  #+:allegro
+  #+ (or allegro sbcl)
   (defmacro start-process (&body body)  
     `(if *multiprocess-queries*
-         (mp:process-run-function 
-        
+         (mp:process-run-function
           (format nil "Query Answering Process ~A" (incf *process-counter*))
         
           #'(lambda (*standard-output* 
@@ -197,16 +196,16 @@
     (mp:process-kill process)
     #+:ccl 
     (ccl:process-kill process)
-    #+:allegro 
-    (multiprocessing:process-kill process)
-    #+(or :abcl :sbcl)
+    #+ (or allegro sbcl) 
+    (mp:process-kill process)
+    #+abcl
     (to-be-implemented 'kill-process1))
 
   ;;;
   ;;;
   ;;;
 
-  #+:allegro
+  #+ (or :allegro sbcl)
   (defun make-lock ()
     (mp:make-process-lock))
 
@@ -221,7 +220,7 @@
   (defun make-lock ()
     (ccl:make-lock))
 
-  #+(or :abcl :sbcl)
+  #+abcl
   (defun make-lock ()
     (to-be-implemented 'make-lock))
 
@@ -229,9 +228,10 @@
   ;;;
   ;;;
 
-  #+:allegro
+  #+ (or allegro sbcl)
   (defun process-sleep (time)
-    (multiprocessing:process-wait-with-timeout "wait" time (lambda () nil)))
+    (mp:process-wait-with-timeout
+     "wait" time (lambda () nil)))
 
   #+:lispworks
   (defun process-sleep (time)
@@ -241,7 +241,7 @@
   (defun process-sleep (time)
     (ccl:process-wait-with-timeout "wait" time (lambda () nil)))
 
-  #+(or :abcl :sbcl)
+  #+abcl
   (defun process-sleep (time)
     (declare (ignorable time))
     (to-be-implemented 'process-sleep))
@@ -259,10 +259,11 @@
     `(mp:with-lock (,lock)
        ,@body))
 
-  #+:allegro
+  #+ (or allegro sbcl)
   (defmacro with-process-lock ((&optional (lock *process-lock*)) &body body)
-    `(mp:with-process-lock (,lock)
-                           ,@body))
+    `(mp:with-process-lock
+      (,lock)
+      ,@body))
 
   #+:ccl
   (defmacro with-process-lock ((&optional (lock *process-lock*)) &body body)
@@ -273,7 +274,7 @@
                ,@body)
            (ccl:release-lock ,l nil)))))
 
-  #+(or :abcl :sbcl)
+  #+abcl
   (defmacro with-process-lock ((&optional (lock *process-lock*)) &body body)
     (declare (ignorable body lock))
     (to-be-implemented 'with-process-lock))
@@ -292,12 +293,17 @@
     (mp:process-unlock *process-lock* nil)
     (mp:process-unlock *lifecycle-lock* nil))
 
-  #+:allegro 
+  #+sbcl ;; from ZASERVE
   (defun release-locks ()
-    (when (multiprocessing:process-lock-locker *process-lock*)
-      (mp:process-unlock *process-lock* (multiprocessing:process-lock-locker  *process-lock*)))
-    (when (multiprocessing::process-lock-locker *lifecycle-lock*)
-      (mp:process-unlock *lifecycle-lock* (multiprocessing:process-lock-locker  *lifecycle-lock*))))
+    (bordeaux-threads:release-lock *process-lock*)
+    (bordeaux-threads:release-lock *lifecycle-lock*))
+
+  #+allegro
+  (defun release-locks ()
+    (when (mp:process-lock-locker *process-lock*)
+      (mp:process-unlock *process-lock* (mp:process-lock-locker  *process-lock*)))
+    (when (mp:process-lock-locker *lifecycle-lock*)
+      (mp:process-unlock *lifecycle-lock* (mp:process-lock-locker  *lifecycle-lock*))))
 
   #+:ccl 
   (defun release-locks ()
@@ -343,11 +349,12 @@
   ;;;
   ;;;
   
-  #+:allegro
+  #+ (or allegro sbcl)
   (defmacro process-wait (&rest body)
-    `(multiprocessing:process-wait "waiting"
-                                   (lambda ()
-                                     ,@body)))
+    `(mp:process-wait
+      "waiting"
+      (lambda ()
+        ,@body)))
 
   #+:lispworks
   (defmacro process-wait (&rest body)
@@ -361,11 +368,10 @@
                         (lambda ()
                           ,@body)))
 
-  #+(or :abcl :sbcl)
+  #+abcl
   (defmacro process-wait (&rest body)
     (declare (ignorable body))
     (to-be-implemented 'process-wait))
-
   )
 
 ;;;
@@ -375,8 +381,8 @@
 (defun kill-current-process ()
   #+:lispworks
   (mp:process-kill mp:*current-process*)
-  #+:allegro 
-  (multiprocessing:process-kill mp:*current-process*)
+  #+ (or allegro sbcl) 
+  (mp:process-kill mp:*current-process*)
   #+:ccl
   (ccl:process-kill ccl:*current-process*)
   #+(or :sbcl :abcl)
