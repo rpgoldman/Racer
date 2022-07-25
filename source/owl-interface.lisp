@@ -595,6 +595,15 @@
       url-spec))
 
 #+:aserve
+(defmacro uri-parsed-path (uri)
+  (cond ((fboundp 'net.uri::uri-parsed-path)
+         `(net.uri::uri-parsed-path ,uri))
+        ((fboundp 'net.uri::.uri-parsed-path)
+         `(net.uri::.uri-parsed-path ,uri))
+        (t
+         (error "No such function: net.uri:uri-parsed-path or net.uri:.uri-parsed-path"))))
+
+#+:aserve
 (defun check-for-url-mirror (url-spec)
   (let* ((parsed-uri (net.uri:parse-uri (clean-url url-spec)))
 	 (scheme (net.uri:uri-scheme parsed-uri))
@@ -617,8 +626,8 @@
                                                     `(:absolute .,(rest (rest dir)))
                                                   dir))
                                               (butlast 
-                                               (rest (net.uri:uri-parsed-path parsed-uri))))
-                                  :name (first (last (net.uri:uri-parsed-path parsed-uri))))))
+                                               (rest (uri-parsed-path parsed-uri))))
+                                  :name (first (last (uri-parsed-path parsed-uri))))))
       (or (gethash url-spec *uri-mirror-table*)
 	  url-spec))))
 
